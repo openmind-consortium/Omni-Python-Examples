@@ -15,12 +15,7 @@ from protos import device_pb2_grpc
 from protos import summit_pb2
 from protos import summit_pb2_grpc
 
-import posix_ipc
-import SharedArray as sa
-
-shm_name='summit_shm' # name of the shared array
-sem_name='/summit_sem' # name of the semaphore
-ip_addr = '10.39.77.81' # ip address from ipconfig on Windows (WiFi LAN)
+ip_addr = 'localhost' # ip address the Summit Server is running on
 
 # Looks for any bridges connected to the host machine
 # The Bridge ID must (partially) match partial_uri
@@ -28,7 +23,7 @@ def find_bridges(bridge_stub):
 
     # If you have the exact bridge ID you're looking for
     # you can store it in bridge_id
-    bridge_id = 'NKW028769N'
+    bridge_id = ''
     partial_uri = '//summit/bridge/' + bridge_id
 
     # Create a request to search for all connected bridges
@@ -68,12 +63,6 @@ def connect_to_bridge(bridge_stub, bridge):
 # Search for devices connected to a given bridge
 def find_devices(bridge_stub, bridge):
 
-    # If you have the exact device ID you're looking for
-    # you can store it in device_id
-    # bridge_id = bridge.name
-    # device_id = ''
-    # partial_uri = bridge_id # + '/device/' + device_id
-
     # Create a request to search for all connected devices
     # who's ID matches partial_uri
     print('Looking for devices')
@@ -103,58 +92,18 @@ def connect_to_device(device_stub, device):
     # Check the connection status
     connection_status = response.connection_status
     print('Connection Status Raw Value:', connection_status)
-    # print('Connection Status:', summit_pb2.SummitConnectDeviceStatus.Name(connection_status-1))
 
     # Return the connection status
     return connection_status
 
-# store data in shared memory array (to be accessed by LiCoRICE)
-def store_data_shm(time_domain_update):
-
-    # create an instance of the semaphore to use
-    print('Creating an instance of the semaphore')
-    sem = posix_ipc.Semaphore(sem_name)
-
-    counter = 0 # keep track of the number of updates
+# Print the data being received from the Summit to the terminal
+def print_data(time_domain_update):
 
     for update in time_domain_update:
         for data in update.data:
 
             channel_id = data.channel_id
-            # print('Channel ID:', channel_id)
-            # print(channel_data)
-
-            try:
-
-                # ***** start protected mutex session *****
-                acquire_time = time.time()
-                sem.acquire(timeout=0)
-                # print('Semaphore Acquired:', time.time())
-
-                # open the shared memory array
-                lfp_shm = sa.attach(shm_name)
-                # print('Attached to Shared Memory')
-
-                # store the packet number
-                lfp_shm[0] = counter
-                # print('Saving packet number', counter, 'to shared memory')
-
-                # store the packet data
-                lfp_shm[1:] = data.channel_data[0]
-                # print('Loaded data', channel_data[0], 'into shared memory')
-
-                release_time = time.time()
-                sem.release()
-                # print('Semaphore Released', time.time())
-                # ***** end protected mutex session *****
-
-                print(str(counter) + ',' + str(acquire_time) + ',' + str(release_time))
-
-            except posix_ipc.BusyError:
-                # print('POSIX is Busy')
-                pass
-
-            counter += 1
+            print(data.channel_data[0])
 
 def create_sense_enables_config():
 
@@ -216,7 +165,6 @@ def create_fft_config():
 
     return fft_config
 
-# TODO: only enable 2 power bands
 def create_power_channel_config():
 
     print('Creating Power Channel Config')
@@ -271,7 +219,6 @@ def configure_sensing(device_stub, device):
     misc_stream_config = create_misc_stream_config()
     accelerometer_config = create_accelerometer_config()
 
-    # TODO: Disable 2nd and 4th channel, set fq to 250 Hz
     # Note: We need to send a config for every bit of sensing, even if it's not turned on
     sense_configure_request = device_pb2.SenseConfigurationRequest(
         name=device.name,
@@ -310,13 +257,12 @@ def stream_data(device_stub, bridge, device):
     stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=1)
 
     # Stream time domain data
-    # time_domain_update is of type TimeDomainUpdate
     time_domain_update = device_stub.TimeDomainStream(stream_enable_request)
     print('Time Domain Update')
     print(time_domain_update)
 
-    # Store time domain data in shared memory
-    store_data_shm(time_domain_update)
+    # Print the data being recieved
+    print_data(time_domain_update)
 
 def run():
     with grpc.insecure_channel(ip_addr+':50051') as channel:
