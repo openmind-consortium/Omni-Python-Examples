@@ -1,6 +1,6 @@
 # OpenMind-Python-Examples
 
-Python samples for interacting with the [OpenMind Server](https://github.com/openmind-consortium/OmniSummitDeviceService). 
+Python sample code for interacting with the [OpenMind Server](https://github.com/openmind-consortium/OmniSummitDeviceService). 
 
 ## Overview
 
