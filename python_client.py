@@ -6,14 +6,14 @@ import logging
 import time
 import grpc
 
-import bridge_pb2
-import bridge_pb2_grpc
+from protos import bridge_pb2
+from protos import bridge_pb2_grpc
 
-import device_pb2
-import device_pb2_grpc
+from protos import device_pb2
+from protos import device_pb2_grpc
 
-from hw_platform import summit_pb2
-from hw_platform import summit_pb2_grpc
+from protos import summit_pb2
+from protos import summit_pb2_grpc
 
 import posix_ipc
 import SharedArray as sa
