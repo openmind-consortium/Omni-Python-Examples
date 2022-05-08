@@ -15,6 +15,8 @@ from protos import device_pb2_grpc
 from protos import summit_pb2
 from protos import summit_pb2_grpc
 
+import numpy as np
+
 ip_addr = 'localhost' # ip address the Summit Server is running on
 
 # Looks for any bridges connected to the host machine
@@ -99,6 +101,8 @@ def connect_to_device(device_stub, device):
 # Print the data being received from the Summit to the terminal
 def print_data(time_domain_update):
 
+    # time_domain_update and time_domain_update.data are both
+    # streams that will generate data until the program is stopped  
     for update in time_domain_update:
         for data in update.data:
 
@@ -238,12 +242,16 @@ def configure_sensing(device_stub, device):
     print('ERROR MESSAGE:', summit_error.message)
 
 # Stream time series data from a device
-def stream_data(device_stub, bridge, device):
+def stream_power_data(device_stub, bridge, device):
 
     print('Attempting to stream data from device:', device.name)
 
+    # Configuring sensing
+    # Sets streaming parameters for each type of stream 
+    configure_sensing(device_stub, device)
+
     # Create a request to stream from the INS to the gRPC server
-    summit_params = summit_pb2.SummitStreamEnablesConfiguration(enable_timedomain=True)
+    summit_params = summit_pb2.SummitStreamEnablesConfiguration(enable_timedomain=True, enable_fft=True, enable_power=True)
     stream_configure_request = device_pb2.StreamConfigureRequest(name=device.name, parameters=summit_params)
 
     # Start the stream
@@ -251,19 +259,88 @@ def stream_data(device_stub, bridge, device):
 
     # Confirm that the stream is started
     stream_configure_status = stream_configure_response.stream_configure_status
-    print('Stream Enabled Status:', device_pb2.StreamConfigureStatus.Name(stream_configure_status))
+    print('Stream Configured Status:', device_pb2.StreamConfigureStatus.Name(stream_configure_status))
 
     # Create a request to stream from the gRPC server to our application
-    stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=1)
+    stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=True)
 
     # Stream time domain data
-    time_domain_update = device_stub.TimeDomainStream(stream_enable_request)
-    print('Time Domain Update')
-    print(time_domain_update)
+    band_power_update = device_stub.BandPowerStream(stream_enable_request)
+    print('Band Power Update')
+    print(band_power_update)
 
-    # Print the data being recieved
-    print_data(time_domain_update)
+    # return a stream of band power data packets 
+    # time_domain_update and time_domain_update.data are both
+    # streams that will generate data until the program is stopped  
+    for update in band_power_update:
+        for data in update.data:
+            yield data.channel_data[0]
 
+# TODO: Learn how to get time stamp for each data packet 
+# TODO: Change window from sample based to time based
+# calculate the average beta power over a time window 
+def beta_power_threshold(device_stub, device, band_power_stream):
+    
+    # calculate a new average every 10 samples 
+    window = 10 
+
+    # array to store our beta powers before they are averaged 
+    beta_power = np.array([])
+
+    # calculate state table value 
+    # based on beta power 
+    for power in band_power_stream: 
+
+        if beta_power.size > window:
+
+            # calculate the average power
+            avg_power = np.mean(beta_power)
+
+            # calculate our step in stim amplitude 
+            step = calculate_stim(avg_power)
+
+            # send out stim 
+            stim_change_step_amp(device_stub, device, step)
+            
+            # reset our number of samples and array 
+            beta_power = np.array([])
+
+        # add this sample to our array of samples (to be averaged later)
+        beta_power.append(power)
+        
+# TODO: Figure out state table 
+# calculate the step in stim amplitude 
+# based on the average power 
+def calculate_stim(power): 
+
+    power_threshold = 10
+
+    if power > power_threshold: 
+        step = -0.1
+    elif power < power_threshold: 
+        step = 0.1
+    else:
+        step = 0
+
+    return step
+
+# Change the amplitude of stimulation by a step 
+def stim_change_step_amp(device_stub, device, step): 
+
+    # the program number 
+    program = 0 
+
+    # send the stimulation command 
+    stim_change_amp_request = device_pb2.StimChangeStepAmpRequest(name=device.name, program_number=program, amp_delta_milliamps=step)
+    stim_change_amp_response = device_stub.StreamEnable(stim_change_amp_request)
+    
+    # confirm that stim was sent properly 
+    if not stim_change_amp_response.error: 
+        print("NEW STIM AMPLITUDE: %d" % stim_change_amp_response.new_stim_amplitude)
+    else: 
+        print("ERROR:\n")
+        print(stim_change_amp_response.error)
+    
 def run():
     with grpc.insecure_channel(ip_addr+':50051') as channel:
 
@@ -291,10 +368,10 @@ def run():
 
                     # If the device connected
                     if device_connection_status == 1 or device_connection_status>4:
-                        # Configure sensing
-                        configure_sensing(device_stub, device)
                         # Stream data from that device
-                        stream_data(device_stub, bridge, device)
+                        band_power_stream = stream_power_data(device_stub, bridge, device)
+                        # Run the burst algorithm on that data stream 
+                        beta_power_threshold(device_stub, device, band_power_stream)
 
 if __name__ == '__main__':
     logging.basicConfig()
