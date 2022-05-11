@@ -6,18 +6,18 @@ import logging
 import time
 import grpc
 
-from protos import bridge_pb2
-from protos import bridge_pb2_grpc
+from protos import summit_pb2
 
 from protos import device_pb2
 from protos import device_pb2_grpc
 
-from protos import summit_pb2
-from protos import summit_pb2_grpc
+from protos import bridge_pb2
+from protos import bridge_pb2_grpc
+
 
 import numpy as np
 
-ip_addr = 'localhost' # ip address the Summit Server is running on
+ip_addr = '10.39.77.9' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
 
 # Looks for any bridges connected to the host machine
 # The Bridge ID must (partially) match partial_uri
@@ -25,7 +25,7 @@ def find_bridges(bridge_stub):
 
     # If you have the exact bridge ID you're looking for
     # you can store it in bridge_id
-    bridge_id = ''
+    bridge_id = 'NKW028769N'
     partial_uri = '//summit/bridge/' + bridge_id
 
     # Create a request to search for all connected bridges
@@ -116,8 +116,8 @@ def create_sense_enables_config():
     sense_enables_config = summit_pb2.SummitSenseEnablesConfiguration(
         fft_stream_channel=summit_pb2.FFTStreamChannel.Value('CH0'),
         enable_timedomain=True,
-        enable_fft=False,
-        enable_power=False,
+        enable_fft=True,
+        enable_power=True,
         enable_ld0=False,
         enable_ld1=False,
         enable_adaptive_stim=False,
@@ -173,7 +173,7 @@ def create_power_channel_config():
 
     print('Creating Power Channel Config')
 
-    power_band_enables = False
+    power_band_enables = True
     power_band_configuration = summit_pb2.PowerBandConfiguration(band_start=1, band_stop=2)
 
     power_channel_config = summit_pb2.SummitPowerStreamConfiguration(
@@ -216,8 +216,8 @@ def configure_sensing(device_stub, device):
     print('Attempting to configure sensing from device:', device.name)
 
     timedomain_sampling_rate = 2 # 0 = 250 Hz, 1 = 500 Hz, 2 = 1000 Hz, 240 = DISABLE
-    td_channel_config = create_time_domain_config()
     sense_enables_config = create_sense_enables_config()
+    td_channel_config = create_time_domain_config()
     fft_config = create_fft_config()
     power_channel_config = create_power_channel_config()
     misc_stream_config = create_misc_stream_config()
@@ -239,8 +239,9 @@ def configure_sensing(device_stub, device):
 
     # Confirm that sensing is enabled
     summit_error = sense_configure_response.error
-    print('ERROR MESSAGE:', summit_error.message)
+    print('SUMMIT MESSAGE:', summit_error.message)
 
+# TODO: Make this more generic. Add the stream type as an argument. 
 # Stream time series data from a device
 def stream_power_data(device_stub, bridge, device):
 
@@ -262,19 +263,39 @@ def stream_power_data(device_stub, bridge, device):
     print('Stream Configured Status:', device_pb2.StreamConfigureStatus.Name(stream_configure_status))
 
     # Create a request to stream from the gRPC server to our application
-    stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=True)
+    stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=1)
 
     # Stream time domain data
-    band_power_update = device_stub.BandPowerStream(stream_enable_request)
-    print('Band Power Update')
-    print(band_power_update)
+    time_domain_update = device_stub.TimeDomainStream(stream_enable_request)
+    print('Time Domain Update')
+    print(time_domain_update)
 
-    # return a stream of band power data packets 
-    # time_domain_update and time_domain_update.data are both
-    # streams that will generate data until the program is stopped  
-    for update in band_power_update:
-        for data in update.data:
-            yield data.channel_data[0]
+    # Print the data being recieved
+    print_data(time_domain_update)
+
+    band_power_update = device_stub.BandPowerStream(stream_enable_request)
+    print("Code:", band_power_update.code())
+    print("Details:", band_power_update.details())
+    print('Band Power Update')
+    for u in band_power_update: 
+        print('We have something')
+    print("What") 
+    print("Code:", band_power_update.code())
+    print("Details:", band_power_update.details())
+
+    # # return a stream of band power data packets 
+    # # time_domain_update and time_domain_update.data are both
+    # # streams that will generate data until the program is stopped  
+    # for update in band_power_update:
+    #     print('Received update')
+    #     for data in update.data:
+    #         print('Data:', data)
+    #         yield data.channel_data[0]
+
+    print('Generating random data')
+
+    # dummy: generate 100 random floats between 0 and 5
+    return 5* np.random.random_sample((100,)) 
 
 # TODO: Learn how to get time stamp for each data packet 
 # TODO: Change window from sample based to time based
@@ -285,13 +306,13 @@ def beta_power_threshold(device_stub, device, band_power_stream):
     window = 10 
 
     # array to store our beta powers before they are averaged 
-    beta_power = np.array([])
+    beta_power = []
 
     # calculate state table value 
     # based on beta power 
     for power in band_power_stream: 
 
-        if beta_power.size > window:
+        if len(beta_power) > window:
 
             # calculate the average power
             avg_power = np.mean(beta_power)
@@ -303,7 +324,7 @@ def beta_power_threshold(device_stub, device, band_power_stream):
             stim_change_step_amp(device_stub, device, step)
             
             # reset our number of samples and array 
-            beta_power = np.array([])
+            beta_power = []
 
         # add this sample to our array of samples (to be averaged later)
         beta_power.append(power)
@@ -312,6 +333,8 @@ def beta_power_threshold(device_stub, device, band_power_stream):
 # calculate the step in stim amplitude 
 # based on the average power 
 def calculate_stim(power): 
+
+    print("Calculating change in amplitude")
 
     power_threshold = 10
 
@@ -327,11 +350,13 @@ def calculate_stim(power):
 # Change the amplitude of stimulation by a step 
 def stim_change_step_amp(device_stub, device, step): 
 
+    print("Sending stim command")
+
     # the program number 
-    program = 0 
+    program = '0b0000 0001'
 
     # send the stimulation command 
-    stim_change_amp_request = device_pb2.StimChangeStepAmpRequest(name=device.name, program_number=program, amp_delta_milliamps=step)
+    stim_change_amp_request = device_pb2.StimChangeStepAmpRequest(name=device.name, program_number=program.encode(), amp_delta_milliamps=step)
     stim_change_amp_response = device_stub.StreamEnable(stim_change_amp_request)
     
     # confirm that stim was sent properly 
