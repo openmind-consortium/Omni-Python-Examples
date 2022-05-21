@@ -17,7 +17,7 @@ from protos import bridge_pb2_grpc
 
 import numpy as np
 
-ip_addr = '10.39.77.9' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
+ip_addr = '10.39.74.116' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
 
 # Looks for any bridges connected to the host machine
 # The Bridge ID must (partially) match partial_uri
@@ -150,10 +150,10 @@ def create_fft_config():
 
     print('Creating FFT Config')
 
-    size = summit_pb2.FastFourierTransformSizes.Value('SIZE_0064')
-    interval = 50
-    window_load = summit_pb2.FastFourierTransformWindowAutoLoads.Value('HANN_50_PERCENT')
-    enable_window = False
+    size = summit_pb2.FastFourierTransformSizes.Value('SIZE_0064') # size of the FFT 
+    interval = 50 # how often the FFT is calculated (in ms)
+    window_load = summit_pb2.FastFourierTransformWindowAutoLoads.Value('HANN_50_PERCENT') # type of Hann window 
+    enable_window = False # do we use a Hann window? 
     band_formation_config = summit_pb2.FastFourierTransformWeightMultiplies.Value('SHIFT_0')
     bins_to_stream = 0
     bins_to_stream_offset = 0
@@ -169,12 +169,25 @@ def create_fft_config():
 
     return fft_config
 
+# configure all the power channels to sum power in the beta band 
 def create_power_channel_config():
 
     print('Creating Power Channel Config')
 
+    freq = 1000.0 # frequency in Hz 
+    num_bins = 64.0 # number of bins in the FFT 
+    freq_per_bin = freq / num_bins # frequency content per bin 
+    
+    beta_start = 13.0 # lowest beta frequency 
+    beta_end = 35.0 # highest beta frequency 
+
+    bin_start = int(beta_start / freq_per_bin)
+    bin_end = int(beta_end / freq_per_bin)
+
+    print("Beta Start Bin:", bin_start, "Beta End Bin:", bin_end)
+
     power_band_enables = True
-    power_band_configuration = summit_pb2.PowerBandConfiguration(band_start=1, band_stop=2)
+    power_band_configuration = summit_pb2.PowerBandConfiguration(band_start=bin_start, band_stop=bin_end)
 
     power_channel_config = summit_pb2.SummitPowerStreamConfiguration(
             power_band_enables=(power_band_enables,)*8,
@@ -258,30 +271,27 @@ def stream_power_data(device_stub, bridge, device):
     # Start the stream
     stream_configure_response = device_stub.StreamEnable(stream_configure_request)
 
-    # Confirm that the stream is started
+    # Confirm that the stream is ready 
     stream_configure_status = stream_configure_response.stream_configure_status
     print('Stream Configured Status:', device_pb2.StreamConfigureStatus.Name(stream_configure_status))
 
     # Create a request to stream from the gRPC server to our application
-    stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=1)
+    stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=True)
 
-    # Stream time domain data
-    time_domain_update = device_stub.TimeDomainStream(stream_enable_request)
-    print('Time Domain Update')
-    print(time_domain_update)
+    # time_domain_update = device_stub.TimeDomainStream(stream_enable_request)
 
-    # Print the data being recieved
-    print_data(time_domain_update)
+    # for update in time_domain_update: 
+    #     print("\n New Update \n")
+    #     for data in update.data: 
+    #         print(data)
 
     band_power_update = device_stub.BandPowerStream(stream_enable_request)
-    print("Code:", band_power_update.code())
-    print("Details:", band_power_update.details())
-    print('Band Power Update')
-    for u in band_power_update: 
-        print('We have something')
-    print("What") 
-    print("Code:", band_power_update.code())
-    print("Details:", band_power_update.details())
+
+    print('Band Power Updates:')
+    for update in band_power_update: 
+        print("\n New Update \n")
+        for data in update.data: 
+            print(data.channel_data)
 
     # # return a stream of band power data packets 
     # # time_domain_update and time_domain_update.data are both
