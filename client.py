@@ -254,6 +254,16 @@ def configure_sensing(device_stub, device):
     summit_error = sense_configure_response.error
     print('SUMMIT MESSAGE:', summit_error.message)
 
+# enable streaming by turning on therapy 
+def enable_streaming(device_stub, device): 
+
+    print("Turning Therapy ON")
+    therapy_on_request = device_pb2.StimChangeTherapyOnRequest(name=device.name)
+    therapy_on_response = device_stub.StimChangeTherapyOn(therapy_on_request)
+
+    summit_error = therapy_on_response.error
+    print('SUMMIT MESSAGE:', summit_error.message)
+
 # TODO: Make this more generic. Add the stream type as an argument. 
 # Stream time series data from a device
 def stream_power_data(device_stub, bridge, device):
@@ -278,81 +288,48 @@ def stream_power_data(device_stub, bridge, device):
     # Create a request to stream from the gRPC server to our application
     stream_enable_request = device_pb2.SetDataStreamEnable(name=bridge.name, enable_stream=True)
 
-    # time_domain_update = device_stub.TimeDomainStream(stream_enable_request)
-
-    # for update in time_domain_update: 
-    #     print("\n New Update \n")
-    #     for data in update.data: 
-    #         print(data)
-
+    # Stream beta band power 
     band_power_update = device_stub.BandPowerStream(stream_enable_request)
 
-    print('Band Power Updates:')
+    print('Receiving Band Power Update:')
     for update in band_power_update: 
-        print("\n New Update \n")
-        for data in update.data: 
-            print(data.channel_data)
+        power = []
+        for data in update.data:
+            power.append(data.channel_data)
+        yield power 
 
-    # # return a stream of band power data packets 
-    # # time_domain_update and time_domain_update.data are both
-    # # streams that will generate data until the program is stopped  
-    # for update in band_power_update:
-    #     print('Received update')
-    #     for data in update.data:
-    #         print('Data:', data)
-    #         yield data.channel_data[0]
-
-    print('Generating random data')
-
-    # dummy: generate 100 random floats between 0 and 5
-    return 5* np.random.random_sample((100,)) 
-
-# TODO: Learn how to get time stamp for each data packet 
-# TODO: Change window from sample based to time based
-# calculate the average beta power over a time window 
+# do stim based on beta power 
 def beta_power_threshold(device_stub, device, band_power_stream):
-    
-    # calculate a new average every 10 samples 
-    window = 10 
-
-    # array to store our beta powers before they are averaged 
-    beta_power = []
 
     # calculate state table value 
     # based on beta power 
     for power in band_power_stream: 
 
-        if len(beta_power) > window:
+        # calculate our step in stim amplitude 
+        step = calculate_stim(power)
 
-            # calculate the average power
-            avg_power = np.mean(beta_power)
-
-            # calculate our step in stim amplitude 
-            step = calculate_stim(avg_power)
-
-            # send out stim 
-            stim_change_step_amp(device_stub, device, step)
+        # send out stim 
+        stim_change_step_amp(device_stub, device, step)
             
-            # reset our number of samples and array 
-            beta_power = []
-
-        # add this sample to our array of samples (to be averaged later)
-        beta_power.append(power)
         
-# TODO: Figure out state table 
-# calculate the step in stim amplitude 
-# based on the average power 
+# calculate the step in stim amplitude based on the average power 
+# across all channels 
+# Note: Power is an array of size 8 
 def calculate_stim(power): 
 
-    print("Calculating change in amplitude")
+    avg_power = np.mean(power)
+    power_threshold = 0.25
 
-    power_threshold = 10
+    print("Average Power:", avg_power)
 
-    if power > power_threshold: 
-        step = -0.1
-    elif power < power_threshold: 
-        step = 0.1
+    if avg_power > power_threshold: 
+        print("Decreasing Stim")
+        step = -20
+    elif avg_power < power_threshold: 
+        print("Increasing Stim")
+        step = 20
     else:
+        print("Keeping Stim Constant")
         step = 0
 
     return step
@@ -363,18 +340,18 @@ def stim_change_step_amp(device_stub, device, step):
     print("Sending stim command")
 
     # the program number 
-    program = '0b0000 0001'
+    program = 1
 
     # send the stimulation command 
-    stim_change_amp_request = device_pb2.StimChangeStepAmpRequest(name=device.name, program_number=program.encode(), amp_delta_milliamps=step)
-    stim_change_amp_response = device_stub.StreamEnable(stim_change_amp_request)
+    stim_change_pw_request = device_pb2.StimChangeStepPWRequest(name=device.name, program_number=program, pw_delta_microseconds=step)
+    stim_change_pw_response = device_stub.StreamEnable(stim_change_pw_request)
     
     # confirm that stim was sent properly 
-    if not stim_change_amp_response.error: 
-        print("NEW STIM AMPLITUDE: %d" % stim_change_amp_response.new_stim_amplitude)
+    if not stim_change_pw_response.error: 
+        print("NEW STIM PUSLE WIDTH: %d" % stim_change_pw_response.new_stim_amplitude)
     else: 
         print("ERROR:\n")
-        print(stim_change_amp_response.error)
+        print(stim_change_pw_response.error)
     
 def run():
     with grpc.insecure_channel(ip_addr+':50051') as channel:
@@ -403,6 +380,8 @@ def run():
 
                     # If the device connected
                     if device_connection_status == 1 or device_connection_status>4:
+                        # Turn on Therapy 
+                        enable_streaming(device_stub, device)
                         # Stream data from that device
                         band_power_stream = stream_power_data(device_stub, bridge, device)
                         # Run the burst algorithm on that data stream 
