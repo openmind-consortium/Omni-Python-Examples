@@ -5,6 +5,7 @@ import logging
 
 import time
 import grpc
+from matplotlib.cbook import ls_mapper
 
 from protos import summit_pb2
 
@@ -324,10 +325,10 @@ def calculate_stim(power):
 
     if avg_power > power_threshold: 
         print("Decreasing Stim")
-        step = -20
+        step = -0.1
     elif avg_power < power_threshold: 
         print("Increasing Stim")
-        step = 20
+        step = 0.1
     else:
         print("Keeping Stim Constant")
         step = 0
@@ -337,21 +338,18 @@ def calculate_stim(power):
 # Change the amplitude of stimulation by a step 
 def stim_change_step_amp(device_stub, device, step): 
 
-    print("Sending stim command")
-
     # the program number 
-    program = 1
+    program = 0
 
     # send the stimulation command 
-    stim_change_pw_request = device_pb2.StimChangeStepPWRequest(name=device.name, program_number=program, pw_delta_microseconds=step)
-    stim_change_pw_response = device_stub.StreamEnable(stim_change_pw_request)
-    
+    stim_change_amp_request = device_pb2.StimChangeStepAmpRequest(name=device.name, program_number=program, amp_delta_milliamps=step)
+    stim_change_amp_response = device_stub.StimChangeStepAmp(stim_change_amp_request)
+
     # confirm that stim was sent properly 
-    if not stim_change_pw_response.error: 
-        print("NEW STIM PUSLE WIDTH: %d" % stim_change_pw_response.new_stim_amplitude)
+    if "Success" in stim_change_amp_response.error.message: 
+        print("New Stim Amplitude: %f" % stim_change_amp_response.new_stim_amplitude)
     else: 
-        print("ERROR:\n")
-        print(stim_change_pw_response.error)
+        print(stim_change_amp_response.error)
     
 def run():
     with grpc.insecure_channel(ip_addr+':50051') as channel:
