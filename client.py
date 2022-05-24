@@ -24,8 +24,10 @@ ip_addr = '10.39.74.26' # ip address the Summit Server is running on (ipconfig w
 
 # Note: You may not have permissions to acquire the semaphore
 # sudo won't help you. You need to chmod 777 /dev/shm/*
-shm_name='summit_shm' # name of the shared array
-sem_name='/summit_sem' # name of the semaphore
+band_power_shm_name='summit_band_power_shm' 
+band_power_sem_name='/summit_band_power_sem' 
+stim_shm_name='summit_stim_shm' 
+stim_sem_name='/summit_stim_sem'
 
 # Looks for any bridges connected to the host machine
 # The Bridge ID must (partially) match partial_uri
@@ -358,47 +360,83 @@ def stim_change_step_amp(device_stub, device, step):
     else: 
         print(stim_change_amp_response.error)
 
-def licorice_compute(band_power_stream): 
+def compute_and_perform_stim(device_stub, device, band_power_stream): 
 
     # create an instance of the semaphore to use
     print('Creating an instance of the semaphore')
-    sem = posix_ipc.Semaphore(sem_name)
 
+    band_power_sem = posix_ipc.Semaphore(band_power_sem_name)
     counter = 0 # keep track of the number of updates
 
     # Note: Power is a 1x8 vector of beta power from each channel 
     for power in band_power_stream:
 
+        # STEP ONE: PUT BAND POWER DATA INTO SHARED MEMORY
         try:
 
             # ***** start protected mutex session *****
             acquire_time = time.time()
-            sem.acquire(timeout=0)
-            print('Semaphore Acquired:', time.time())
+            band_power_sem.acquire(timeout=0)
+            print('Band Power Semaphore Acquired:', time.time())
 
             # open the shared memory array
-            lfp_shm = sa.attach(shm_name)
-            print('Attached to Shared Memory')
+            band_power_shm = sa.attach(band_power_shm_name)
+            print('Attached to Band Power Shared Memory')
 
             # store the packet number
-            lfp_shm[0] = counter
+            band_power_shm[0] = counter
             print('Saving packet number', counter, 'to shared memory')
 
-            # store the packet data
-            lfp_shm[1:] = power 
+            # store the band power data
+            band_power_shm[1:] = power 
             print('Loaded data', power, 'into shared memory')
 
             release_time = time.time()
-            sem.release()
+            band_power_sem.release()
             print('Semaphore Released', time.time())
             # ***** end protected mutex session *****
-
-            print(str(counter) + ',' + str(acquire_time) + ',' + str(release_time))
 
         except posix_ipc.BusyError:
             print('POSIX is Busy')
 
         counter += 1
+
+        stim_sem = posix_ipc.Semaphore(stim_sem_name)
+
+        # STEP TWO: READ STIM COMMAND FROM SHARED MEMORY
+        try:
+
+            # ***** start protected mutex session *****
+            acquire_time = time.time()
+            stim_sem.acquire(timeout=0)
+            print('Stim Semaphore Acquired:', time.time())
+
+            # open the shared memory array
+            stim_shm = sa.attach(stim_shm_name)
+            print('Attached to Stim Shared Memory')
+
+            # store the packet number
+            stim_packet_number = stim_shm[0]
+            print('Found data from stim packet number', stim_packet_number)
+
+            # store the packet data
+            band_power_packet_number = stim_shm[1]
+            print('Data corresponds to band power packet number', band_power_packet_number)
+            
+            # store the packet number
+            stim_step = stim_shm[2]
+            print('Stim command to change amplitude step by', stim_step, 'milliamps')
+
+            release_time = time.time()
+            stim_sem.release()
+            print('Semaphore Released', time.time())
+            # ***** end protected mutex session *****
+
+            # STEP THREE: DO STIM 
+            stim_change_step_amp(device_stub, device, stim_step)
+
+        except posix_ipc.BusyError:
+            print('POSIX is Busy')
 
 def run():
     with grpc.insecure_channel(ip_addr+':50051') as channel:
@@ -432,8 +470,7 @@ def run():
                         # Stream data from that device
                         band_power_stream = stream_power_data(device_stub, bridge, device)
                         # Send to LiCoRICE for processing and get stim commands in return 
-                        stim_commands = licorice_compute(band_power_stream)
-                        # beta_power_threshold(device_stub, device, band_power_stream)
+                        compute_and_perform_stim(device_stub, device, band_power_stream)
 
 if __name__ == '__main__':
     logging.basicConfig()
