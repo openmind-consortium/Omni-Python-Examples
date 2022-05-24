@@ -20,8 +20,10 @@ import numpy as np
 import posix_ipc
 import SharedArray as sa
 
-ip_addr = '10.39.74.116' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
+ip_addr = '10.39.74.26' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
 
+# Note: You may not have permissions to acquire the semaphore
+# sudo won't help you. You need to chmod 777 /dev/shm/*
 shm_name='summit_shm' # name of the shared array
 sem_name='/summit_sem' # name of the semaphore
 
