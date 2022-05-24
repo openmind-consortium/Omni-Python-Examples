@@ -15,10 +15,15 @@ from protos import device_pb2_grpc
 from protos import bridge_pb2
 from protos import bridge_pb2_grpc
 
-
 import numpy as np
 
+import posix_ipc
+import SharedArray as sa
+
 ip_addr = '10.39.74.116' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
+
+shm_name='summit_shm' # name of the shared array
+sem_name='/summit_sem' # name of the semaphore
 
 # Looks for any bridges connected to the host machine
 # The Bridge ID must (partially) match partial_uri
@@ -350,7 +355,49 @@ def stim_change_step_amp(device_stub, device, step):
         print("New Stim Amplitude: %f" % stim_change_amp_response.new_stim_amplitude)
     else: 
         print(stim_change_amp_response.error)
-    
+
+def licorice_compute(band_power_stream): 
+
+    # create an instance of the semaphore to use
+    print('Creating an instance of the semaphore')
+    sem = posix_ipc.Semaphore(sem_name)
+
+    counter = 0 # keep track of the number of updates
+
+    # Note: Power is a 1x8 vector of beta power from each channel 
+    for power in band_power_stream:
+
+        try:
+
+            # ***** start protected mutex session *****
+            acquire_time = time.time()
+            sem.acquire(timeout=0)
+            print('Semaphore Acquired:', time.time())
+
+            # open the shared memory array
+            lfp_shm = sa.attach(shm_name)
+            print('Attached to Shared Memory')
+
+            # store the packet number
+            lfp_shm[0] = counter
+            print('Saving packet number', counter, 'to shared memory')
+
+            # store the packet data
+            lfp_shm[1:] = power 
+            print('Loaded data', power, 'into shared memory')
+
+            release_time = time.time()
+            sem.release()
+            print('Semaphore Released', time.time())
+            # ***** end protected mutex session *****
+
+            print(str(counter) + ',' + str(acquire_time) + ',' + str(release_time))
+
+        except posix_ipc.BusyError:
+            print('POSIX is Busy')
+
+        counter += 1
+
 def run():
     with grpc.insecure_channel(ip_addr+':50051') as channel:
 
@@ -382,8 +429,9 @@ def run():
                         enable_streaming(device_stub, device)
                         # Stream data from that device
                         band_power_stream = stream_power_data(device_stub, bridge, device)
-                        # Run the burst algorithm on that data stream 
-                        beta_power_threshold(device_stub, device, band_power_stream)
+                        # Send to LiCoRICE for processing and get stim commands in return 
+                        stim_commands = licorice_compute(band_power_stream)
+                        # beta_power_threshold(device_stub, device, band_power_stream)
 
 if __name__ == '__main__':
     logging.basicConfig()
