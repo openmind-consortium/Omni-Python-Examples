@@ -20,7 +20,7 @@ import numpy as np
 import posix_ipc
 import SharedArray as sa
 
-ip_addr = '10.39.74.26' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
+ip_addr = '10.34.254.114' # ip address the Summit Server is running on (ipconfig wifi ipv4 from Windows)
 
 # Note: You may not have permissions to acquire the semaphore
 # sudo won't help you. You need to chmod 777 /dev/shm/*
@@ -328,7 +328,7 @@ def beta_power_threshold(device_stub, device, band_power_stream):
 def calculate_stim(power): 
 
     avg_power = np.mean(power)
-    power_threshold = 0.25
+    power_threshold = 0.1
 
     print("Average Power:", avg_power)
 
@@ -363,7 +363,7 @@ def stim_change_step_amp(device_stub, device, step):
 def compute_and_perform_stim(device_stub, device, band_power_stream): 
 
     # create an instance of the semaphore to use
-    print('Creating an instance of the semaphore')
+    # print('Creating an instance of the semaphore')
 
     band_power_sem = posix_ipc.Semaphore(band_power_sem_name)
     counter = 0 # keep track of the number of updates
@@ -393,7 +393,7 @@ def compute_and_perform_stim(device_stub, device, band_power_stream):
 
             release_time = time.time()
             band_power_sem.release()
-            print('Semaphore Released', time.time())
+            print('client_wrote_band_power', counter, time.time())
             # ***** end protected mutex session *****
 
         except posix_ipc.BusyError:
@@ -429,7 +429,7 @@ def compute_and_perform_stim(device_stub, device, band_power_stream):
 
             release_time = time.time()
             stim_sem.release()
-            print('Semaphore Released', time.time())
+            print('client_read_stim', band_power_packet_number, time.time())
             # ***** end protected mutex session *****
 
             # STEP THREE: DO STIM 

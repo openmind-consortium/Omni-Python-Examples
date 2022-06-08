@@ -101,10 +101,14 @@ def get_data():
 
 def chartfunc(): 
     get_data()
-    ax1.plot(stim_data_x, stim_data_y)
-    ax2.plot(band_power_data_x, band_power_data_y)
 
-fig, (ax1, ax2) = plt.subplots(2, 1)
+    ax0.set_title('Stimulation')
+    ax0.plot(stim_data_x, stim_data_y)
+
+    ax0.set_title('Average Band Power')
+    ax1.plot(band_power_data_x, band_power_data_y)
+
+fig, (ax0, ax1) = plt.subplots(2, 1)
 fig.suptitle('Real Time Closed Loop DBS')
 
 animator = ani.FuncAnimation(fig, chartfunc, interval = 500)
