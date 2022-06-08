@@ -6,6 +6,8 @@ import logging
 import time
 import grpc
 
+import argparse
+
 from protos import bridge_pb2
 from protos import bridge_pb2_grpc
 
@@ -14,8 +16,6 @@ from protos import device_pb2_grpc
 
 from protos import summit_pb2
 from protos import summit_pb2_grpc
-
-ip_addr = 'localhost' # ip address the Summit Server is running on
 
 # Looks for any bridges connected to the host machine
 # The Bridge ID must (partially) match partial_uri
@@ -264,7 +264,7 @@ def stream_data(device_stub, bridge, device):
     # Print the data being recieved
     print_data(time_domain_update)
 
-def run():
+def run(ip_addr):
     with grpc.insecure_channel(ip_addr+':50051') as channel:
 
         # Initialize stubs
@@ -297,5 +297,11 @@ def run():
                         stream_data(device_stub, bridge, device)
 
 if __name__ == '__main__':
+
     logging.basicConfig()
-    run()
+
+    parser = argparse.ArgumentParser(description='Parsing input commands')
+    parser.add_argument('--ip', type=str, nargs='?', default='localhost', help='The IP address where the OpenMind Server is running')
+    args = parser.parse_args()
+
+    run(args.ip)
