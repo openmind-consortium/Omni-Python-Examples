@@ -1,4 +1,4 @@
-# OpenMind-Python-Examples
+# Omni-Python-Examples
 
 This project contains sample code for streaming data from the OpenMind Server. 
 
