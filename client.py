@@ -438,7 +438,7 @@ def compute_and_perform_stim(device_stub, device, band_power_stream):
         except posix_ipc.BusyError:
             print('POSIX is Busy')
 
-def run():
+def run(ip_addr):
     with grpc.insecure_channel(ip_addr+':50051') as channel:
 
         # Initialize stubs
@@ -473,5 +473,11 @@ def run():
                         compute_and_perform_stim(device_stub, device, band_power_stream)
 
 if __name__ == '__main__':
+
     logging.basicConfig()
-    run()
+
+    parser = argparse.ArgumentParser(description='Parsing input commands')
+    parser.add_argument('--ip', type=str, nargs='?', default='localhost', help='The IP address where the OpenMind Server is running')
+    args = parser.parse_args()
+
+    run(args.ip)
