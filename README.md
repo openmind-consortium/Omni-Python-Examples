@@ -20,6 +20,8 @@ This demo requires a Summit RC+S, a CTM, and the [OpenMind Server](https://githu
 
 These examples use Python3, so make sure it is installed. Run `pip install grpcio` to install the gRPC tools and then build the protobuf files found in the submodule [`OmniProtos`](https://github.com/openmind-consortium/OmniProtos/tree/c8c2ad547a8bd7b890eb2ed20532e48beccb507e). 
 
+After the protos are built, the protos directory needs to be added to the [PYTHONPATH environment variable](https://www.simplilearn.com/tutorials/python-tutorial/python-path#setting_the_python_environment_variable_pythonpath_on_windows). 
+
 ## Running
 
 To run this demo, turn on the CTM and place it on the Summit RC+S for pairing. Next, start the OpenMind Server by building and running the Visual Studio solution. If your OpenMind Server is running on localhost, then you can run `python client.py` as is. Otherwise, you can change the default IP address by running `python client.py --ip <ip-address>`. Once the client code is connected to the device, time domain packets of data should start printing in the terminal. 
