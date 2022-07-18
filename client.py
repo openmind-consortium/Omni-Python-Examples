@@ -9,11 +9,7 @@ import grpc
 import argparse
 
 import sys
-from sys import platform
-if platform == "win32":
-    sys.path.append('C:/Users/aoelsner/source/repos/Omni-Python-Examples/protos')
-elif platform == "linux":
-    sys.path.append('/mnt/c/Users/aoelsner/source/repos/Omni-Python-Examples/protos')
+sys.path.append('./protos')
 
 from protos import bridge_pb2
 from protos import bridge_pb2_grpc
