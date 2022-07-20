@@ -8,6 +8,9 @@ import grpc
 
 import argparse
 
+import sys
+sys.path.append('./protos')
+
 from protos import bridge_pb2
 from protos import bridge_pb2_grpc
 
