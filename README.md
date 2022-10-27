@@ -18,7 +18,7 @@ The order of operations is as follows:
 
 This demo requires a Summit RC+S, a CTM, and the [OpenMind Server](https://github.com/openmind-consortium/OmniSummitDeviceService). 
 
-These examples use Python3, so make sure it is installed. Run `pip install grpcio` to install the gRPC tools and then build the protobuf files found in the submodule [`OmniProtos`](https://github.com/openmind-consortium/OmniProtos/tree/c8c2ad547a8bd7b890eb2ed20532e48beccb507e). 
+These examples use Python3, so make sure it is installed. Run `pip install -r requirements.txt` to install the necessary Python packages and then build the protobuf files found in the submodule [`OmniProtos`](https://github.com/openmind-consortium/OmniProtos/tree/c8c2ad547a8bd7b890eb2ed20532e48beccb507e). 
 
 After the protos are built, the protos directory needs to be added to the [PYTHONPATH environment variable](https://www.simplilearn.com/tutorials/python-tutorial/python-path#setting_the_python_environment_variable_pythonpath_on_windows). 
 
